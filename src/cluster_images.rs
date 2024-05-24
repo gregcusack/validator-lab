@@ -73,4 +73,8 @@ impl ClusterImages {
     pub fn get_all(&self) -> impl Iterator<Item = &Validator> {
         self.get_validators().chain(self.get_clients())
     }
+
+    pub fn get_bootstrap_and_clients(&self) -> impl Iterator<Item = &Validator> {
+        self.bootstrap.iter().chain(self.get_clients())
+    }
 }

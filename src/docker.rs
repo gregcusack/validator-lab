@@ -191,7 +191,7 @@ RUN apt-get update && apt-get install -y iputils-ping curl vim && \
 USER solana
 COPY --chown=solana:solana  {startup_script_directory} /home/solana/k8s-cluster-scripts
 RUN chmod +x /home/solana/k8s-cluster-scripts/*
-COPY --chown=solana:solana ./config-k8s/bootstrap-validator  /home/solana/ledger
+{}
 COPY --chown=solana:solana ./{solana_build_directory}/bin/ /home/solana/bin/
 COPY --chown=solana:solana ./{solana_build_directory}/version.yml /home/solana/
 ENV PATH="/home/solana/bin:${{PATH}}"
@@ -200,6 +200,7 @@ WORKDIR /home/solana
 {}
 "#,
             self.base_image,
+            DockerConfig::is_bootstrap(validator_type),
             self.insert_client_accounts_if_present(solana_root_path, validator_type)?
         );
 
@@ -209,6 +210,16 @@ WORKDIR /home/solana
             content.unwrap_or(dockerfile.as_str()),
         )?;
         Ok(())
+    }
+
+    fn is_bootstrap(
+        v_type: &ValidatorType
+    ) -> String {
+        if v_type == &ValidatorType::Bootstrap {
+            "COPY --chown=solana:solana ./config-k8s/bootstrap-validator  /home/solana/ledger".to_string()
+        } else {
+            "".to_string()
+        }
     }
 
     fn insert_client_accounts_if_present(

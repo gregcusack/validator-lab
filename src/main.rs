@@ -623,6 +623,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         docker.push_images(cluster_images.get_all())?;
         info!("Pushed {} docker images", cluster_images.get_all().count());
+    } else {
+        // We need to still push bootstrap and client images since genesis is created on each run. 
+        // Bootstrap and client accounts are built into genesis.
+        info!("BuildType == Skip. Building and pushing Bootstrap and Client images");
+        for v in cluster_images.get_bootstrap_and_clients() {
+            docker.build_image(solana_root.get_root_path(), v.image())?;
+            info!("Built {} image", v.validator_type());
+        }
+        docker.push_images(cluster_images.get_bootstrap_and_clients())?;
+        info!("Pushed {} docker images", cluster_images.get_bootstrap_and_clients().count());
     }
 
     // metrics secret create once and use by all pods
