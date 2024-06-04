@@ -5,6 +5,7 @@ use {
     solana_core::gen_keys::GenKeys,
     solana_sdk::{
         native_token::sol_to_lamports,
+        pubkey::Pubkey,
         signature::{write_keypair_file, Keypair},
     },
     std::{
@@ -53,6 +54,7 @@ fn parse_spl_genesis_file(
     Ok(args)
 }
 
+#[derive(Debug)]
 pub struct GenesisFlags {
     pub hashes_per_tick: String,
     pub slots_per_epoch: Option<u64>,
@@ -63,34 +65,8 @@ pub struct GenesisFlags {
     pub cluster_type: String,
     pub bootstrap_validator_sol: Option<f64>,
     pub bootstrap_validator_stake_sol: Option<f64>,
-}
-
-impl std::fmt::Display for GenesisFlags {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(
-            f,
-            "GenesisFlags {{\n\
-             hashes_per_tick: {:?},\n\
-             slots_per_epoch: {:?},\n\
-             target_lamports_per_signature: {:?},\n\
-             faucet_lamports: {:?},\n\
-             enable_warmup_epochs: {},\n\
-             max_genesis_archive_unpacked_size: {:?},\n\
-             cluster_type: {}\n\
-             bootstrap_validator_sol: {:?},\n\
-             bootstrap_validator_stake_sol: {:?},\n\
-             }}",
-            self.hashes_per_tick,
-            self.slots_per_epoch,
-            self.target_lamports_per_signature,
-            self.faucet_lamports,
-            self.enable_warmup_epochs,
-            self.max_genesis_archive_unpacked_size,
-            self.cluster_type,
-            self.bootstrap_validator_sol,
-            self.bootstrap_validator_stake_sol,
-        )
-    }
+    pub features_to_disable: Vec<Pubkey>,
+    pub enable_feature_set: Option<String>,
 }
 
 fn append_client_accounts_to_file(
@@ -396,6 +372,16 @@ impl Genesis {
             );
         }
 
+        if !self.flags.features_to_disable.is_empty() {
+            args.push("--features-to-disable".to_string());
+            for feature in &self.flags.features_to_disable {
+                args.push(feature.to_string());
+            }
+        } else if let Some(cluster_type) = &self.flags.enable_feature_set {
+            args.push("--enable-feature-set".to_string());
+            args.push(cluster_type.clone());
+        }
+
         Ok(args)
     }
 
@@ -420,7 +406,6 @@ impl Genesis {
 
         let progress_bar = new_spinner_progress_bar();
         progress_bar.set_message(format!("{SUN}Building Genesis..."));
-
         let executable_path = exec_path.join("solana-genesis");
         let output = Command::new(executable_path)
             .args(&args)

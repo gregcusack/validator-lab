@@ -5,8 +5,8 @@ use {
     solana_ledger::blockstore_cleanup_service::{
         DEFAULT_MAX_LEDGER_SHREDS, DEFAULT_MIN_MAX_LEDGER_SHREDS,
     },
-    solana_sdk::{signature::keypair::read_keypair_file, signer::Signer},
-    std::{path::PathBuf, result::Result},
+    solana_sdk::{pubkey::Pubkey, signature::keypair::read_keypair_file, signer::Signer},
+    std::{path::PathBuf, result::Result, str::FromStr},
     strum::VariantNames,
     validator_lab::{
         check_directory,
@@ -144,6 +144,24 @@ fn parse_matches() -> clap::ArgMatches {
                 .takes_value(true)
                 .default_value(&DEFAULT_BOOTSTRAP_NODE_STAKE_SOL.to_string())
                 .help("Genesis config. bootstrap validator stake sol"),
+        )
+        .arg(
+            Arg::with_name("features_to_disable")
+                .long("features-to-disable")
+                .value_name("Vec<Feature Pubkeys>")
+                .takes_value(true)
+                .multiple(true)
+                .conflicts_with("enable_feature_set")
+                .help("Agave Version >= 2.0.0. A list of features in the genesis to disable. Compatable with cluster_type == `development`")
+        )
+        .arg(
+            Arg::with_name("enable_feature_set")
+                .long("enable-feature-set")
+                .possible_values(["devnet", "testnet", "mainnet-beta"])
+                .takes_value(true)
+                .conflicts_with("features_to_disable")
+                .help("Agave Version >= 2.0.0. Enable same features enabled on cluster-type. e.g. if you want to enable all features
+                currently enabled on mainnet-beta, pass in `--enable-feature-set mainnet-beta` here")
         )
         //Docker config
         .arg(
@@ -421,6 +439,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         agave_repo_path,
     );
 
+    let cluster_type = matches
+        .value_of("cluster_type")
+        .unwrap_or_default()
+        .to_string();
+
+    let features_to_disable: Vec<Pubkey> =
+        matches
+            .values_of("features_to_disable")
+            .map_or(Vec::new(), |values| {
+                values
+                    .map(|s| Pubkey::from_str(s).expect("Invalid Pubkey"))
+                    .collect()
+            });
+
+    if cluster_type != "development" && !features_to_disable.is_empty() {
+        eprintln!("Error: The --features-to-disable argument cannot be used with --cluster-type={cluster_type:?}");
+        std::process::exit(1);
+    }
+
     let genesis_flags = GenesisFlags {
         hashes_per_tick: matches
             .value_of("hashes_per_tick")
@@ -451,10 +488,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .parse()
                     .expect("Invalid value for max_genesis_archive_unpacked_size")
             }),
-        cluster_type: matches
-            .value_of("cluster_type")
-            .unwrap_or_default()
-            .to_string(),
+        cluster_type,
         bootstrap_validator_sol: matches
             .value_of("bootstrap_validator_sol")
             .map(|value_str| {
@@ -469,6 +503,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .expect("Invalid value for bootstrap_validator_stake_sol")
             },
         ),
+        features_to_disable,
+        enable_feature_set: matches
+            .value_of("enable_feature_set")
+            .map(|s| s.to_string()),
     };
 
     let limit_ledger_size = value_t_or_exit!(matches, "limit_ledger_size", u64);
