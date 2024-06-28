@@ -1,7 +1,7 @@
 use {
     crate::{
         new_spinner_progress_bar, startup_scripts::StartupScripts, validator::Validator,
-        ValidatorType, BUILD, ROCKET, SOLANA_RELEASE,
+        validator_type::ValidatorType, BUILD, ROCKET, SOLANA_RELEASE,
     },
     log::*,
     std::{

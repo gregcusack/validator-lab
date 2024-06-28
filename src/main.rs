@@ -26,6 +26,7 @@ use {
         validator::{LabelType, Validator},
         validator_config::ValidatorConfig,
         ClusterDataRoot, EnvironmentConfig, Metrics, ValidatorType, SOLANA_RELEASE,
+        client_config::{ClientConfig, BenchTpsConfig, SpammerConfig},
     },
 };
 
@@ -341,8 +342,26 @@ fn parse_matches() -> clap::ArgMatches {
                 Arg::with_name("spam_type")
                     .long("spam-type")
                     .takes_value(true)
-                    .value_name("TYPE")
-                    .help("Type of spam to generate"),
+                    .default_value("legacy-contact-info")
+                    .possible_values(["legacy-contact-info", "contact-info", "mixed"])
+                    .help("Type of spam to send. `mixed` will send both `LegacyContactInfo` and `ContactInfo`"),
+            )
+            .arg(
+                Arg::with_name("target_node")
+                    .short('t')
+                    .long("target-node")
+                    .value_name("HOST:PORT")
+                    .takes_value(true)
+                    .default_value("127.0.0.1:8001")
+                    .validator(|s| solana_net_utils::is_host_port(s.to_string()))
+                    .help("Spam gossip traffic to this HOST:PORT"),
+            )
+            .arg(
+                Arg::with_name("percent_lci")
+                    .long("percent-lci")
+                    .takes_value(true)
+                    .default_value_if("spam_type", Some("mixed"), Some("50"))
+                    .help("Percent of LegacyContactInfo to generate spam-type is `mixed`. 100-percent = percent ContactInfo to send"),
             )
         )
         // Heterogeneous Cluster Config
@@ -450,7 +469,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else if let Some(matches) = matches.subcommand_matches("spammer") {
         let spammer_config = SpammerConfig {
             thread_sleep_ms: matches.value_of("thread_sleep_ms").map(|s| s.parse().unwrap()),
-            spam_type: matches.value_of("spam_type").map(|s| s.to_string()),
+            spam_type: get_spam_type(&matches),
         };
 
         ClientConfig {

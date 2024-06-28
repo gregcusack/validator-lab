@@ -12,19 +12,11 @@ impl Client for SpammerClient {
         }
     }
 
-    fn get_docker_image(&self) -> &str {
-        "your-dockerhub-username/spammer:latest"
+    fn generate_client_command_flags(&self) -> Vec<String> {
+        let mut flags = vec![];
+
+        flags
+
     }
 
-    fn get_command(&self) -> Vec<String> {
-        vec![
-            "spammer".to_string(),
-            "--endpoint".to_string(),
-            self.get_endpoint().to_string(),
-        ]
-    }
-
-    fn get_endpoint(&self) -> &str {
-        self.config.client_target_node.as_ref().unwrap().to_string().as_str()
-    }
 }

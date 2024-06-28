@@ -4,7 +4,7 @@ use {
         docker::DockerImage,
         k8s_helpers::{self, SecretType},
         validator_config::ValidatorConfig,
-        Metrics, ValidatorType,
+        Metrics, validator_type::ValidatorType,
     },
     k8s_openapi::{
         api::{

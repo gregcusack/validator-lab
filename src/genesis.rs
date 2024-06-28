@@ -1,5 +1,5 @@
 use {
-    crate::{fetch_spl, new_spinner_progress_bar, ValidatorType, SOLANA_RELEASE, SUN, WRITING},
+    crate::{fetch_spl, new_spinner_progress_bar, validator_type::ValidatorType, SOLANA_RELEASE, SUN, WRITING},
     log::*,
     rand::Rng,
     solana_core::gen_keys::GenKeys,

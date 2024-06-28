@@ -1,5 +1,5 @@
 use {
-    crate::{docker::DockerImage, ValidatorType},
+    crate::{docker::DockerImage, validator_type::ValidatorType},
     k8s_openapi::api::{apps::v1::ReplicaSet, core::v1::Secret},
     std::{collections::BTreeMap, string::String},
 };

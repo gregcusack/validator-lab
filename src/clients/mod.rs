@@ -8,9 +8,6 @@ pub mod spam;
 
 pub trait Client {
     fn new(config: &ClientConfig) -> Self where Self: Sized;
-    fn get_docker_image(&self) -> &str;
-    fn get_command(&self) -> Vec<String>;
-    fn get_endpoint(&self) -> &str;
     fn generate_client_command_flags(&self) -> Vec<String>; // Add this method
 }
 

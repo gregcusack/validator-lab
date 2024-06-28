@@ -1,4 +1,8 @@
-use solana_sdk::pubkey::Pubkey;
+use {
+    clap::ArgMatches,
+    solana_sdk::pubkey::Pubkey,
+    strum_macros::{Display, EnumString},
+};
 
 #[derive(Clone, Debug)]
 pub struct ClientConfig {
@@ -20,5 +24,5 @@ pub struct BenchTpsConfig {
 #[derive(Clone, Debug)]
 pub struct SpammerConfig {
     pub thread_sleep_ms: Option<u64>,
-    pub spam_type: Option<String>,
+    pub spam_type: SpamType,
 }

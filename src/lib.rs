@@ -45,29 +45,6 @@ struct GenesisProgram<'a> {
     loader: &'a str,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Display)]
-pub enum ValidatorType {
-    #[strum(serialize = "bootstrap-validator")]
-    Bootstrap,
-    #[strum(serialize = "validator")]
-    Standard,
-    #[strum(serialize = "rpc-node")]
-    RPC,
-    #[strum(serialize = "client")]
-    Client(/* client index */ usize),
-}
-
-impl ValidatorType {
-    fn script(&self) -> &'static str {
-        match self {
-            ValidatorType::Bootstrap => startup_scripts::StartupScripts::bootstrap(),
-            ValidatorType::Standard => startup_scripts::StartupScripts::validator(),
-            ValidatorType::RPC => startup_scripts::StartupScripts::rpc(),
-            ValidatorType::Client(_) => startup_scripts::StartupScripts::client(),
-        }
-    }
-}
-
 #[derive(Clone, Debug, Default)]
 pub struct Metrics {
     pub host: String,
@@ -113,6 +90,7 @@ pub mod release;
 pub mod startup_scripts;
 pub mod validator;
 pub mod validator_config;
+pub mod validator_type;
 
 static BUILD: Emoji = Emoji("👷 ", "");
 static PACKAGE: Emoji = Emoji("📦 ", "");
