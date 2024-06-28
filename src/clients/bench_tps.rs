@@ -1,11 +1,11 @@
 use crate::client_config::ClientConfig;
-use super::Client;
+use super::ClientTrait;
 
 pub struct BenchTpsClient {
     config: ClientConfig,
 }
 
-impl Client for BenchTpsClient {
+impl ClientTrait for BenchTpsClient {
     fn new(config: &ClientConfig) -> Self {
         BenchTpsClient {
             config: config.clone(),
@@ -23,7 +23,7 @@ impl Client for BenchTpsClient {
 
             flags.push(bench_tps_config.client_type.clone());
 
-            if let Some(target_node) = &self.config.client_target_node {
+            if let Some(target_node) = bench_tps_config.client_target_node {
                 flags.push("--target-node".to_string());
                 flags.push(target_node.to_string().clone());
             }

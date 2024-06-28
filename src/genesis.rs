@@ -167,7 +167,7 @@ impl Genesis {
             ValidatorType::RPC => {
                 vec!["identity"] // no vote or stake account for RPC
             }
-            ValidatorType::Client(_) => {
+            ValidatorType::ClientWrapper(_, _) => {
                 return Err("Client valdiator_type in generate_accounts not allowed".into())
             }
         };
@@ -210,7 +210,7 @@ impl Genesis {
                 ValidatorType::Standard | ValidatorType::RPC => {
                     format!("{validator_type}-{account}-{account_index}.json")
                 }
-                ValidatorType::Client(_) => panic!("Client type not supported"),
+                ValidatorType::ClientWrapper(_, _) => panic!("Client type not supported"),
             };
 
             let outfile = self.config_dir.join(&filename);

@@ -263,7 +263,7 @@ pub async fn fetch_spl(solana_root_path: &Path) -> Result<(), Box<dyn std::error
     Ok(())
 }
 
-pub fn parse_and_format_bench_tps_args(bench_tps_args: Option<&str>) -> Vec<String> {
+pub fn parse_and_format_transparent_args(bench_tps_args: Option<&str>) -> Vec<String> {
     if let Some(args) = bench_tps_args {
         let mut val_args: Vec<_> = args
             .split_whitespace()
@@ -290,6 +290,14 @@ pub fn check_directory(path: &Path, description: &str) -> Result<(), Box<dyn std
         }
     } else {
         return Err(format!("{} directory not found: {}", description, path.display()).into());
+    }
+    Ok(())
+}
+
+fn validate_docker_image(image: String) -> Result<(), String> {
+    let parts: Vec<&str> = image.split('/').collect();
+    if parts.len() != 2 || !parts[1].contains(':') {
+        return Err("Invalid Docker image format. Expected <repository>/<client-name>:<tag>".into());
     }
     Ok(())
 }

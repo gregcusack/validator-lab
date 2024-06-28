@@ -1206,39 +1206,4 @@ echo "client command to run: $clientCommand"
 $clientCommand
 "#
     }
-
-    /// Spam tps client script
-    pub fn spam_client() -> &'static str {
-      r#"#!/bin/bash
-runtime_args=()
-while [[ -n $1 ]]; do
-  if [[ ${1:0:1} = - ]]; then
-    if [[ $1 = --target-node ]]; then
-      runtime_args+=("$1" "$2")
-      shift 2
-    elif [[ $1 = --duration ]]; then
-      runtime_args+=("$1" "$2")
-      shift 2
-    elif [[ $1 = --thread-sleep-ms ]]; then
-      runtime_args+=("$1" "$2")
-      shift 2
-    elif [[ $1 = --spam-type ]]; then
-      runtime_args+=("$1" "$2")
-      shift 2
-    elif [[ $1 = --shred-version ]]; then
-      runtime_args+=("$1" "$2")
-      shift 2
-    else
-      echo "Unknown argument: $1"
-      ./spammer --help
-      exit 1
-    fi
-  else
-    echo "Unknown argument: $1"
-    ./spammer --help
-    exit 1
-  fi
-done
-"#
-    }
 }

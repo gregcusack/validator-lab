@@ -1,12 +1,12 @@
 use {
     crate::{
-        clients::ClientType,
+        client_config::Client,
         startup_scripts::StartupScripts,
     },
     strum_macros::Display,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Display)]
+#[derive(Debug, Clone, PartialEq, Display)]
 pub enum ValidatorType {
     #[strum(serialize = "bootstrap-validator")]
     Bootstrap,
@@ -15,7 +15,7 @@ pub enum ValidatorType {
     #[strum(serialize = "rpc-node")]
     RPC,
     #[strum(serialize = "client")]
-    Client(ClientType, /* client index */ usize),
+    ClientWrapper(Client, /* client index */ usize),
 }
 
 impl ValidatorType {
@@ -24,7 +24,7 @@ impl ValidatorType {
             ValidatorType::Bootstrap => StartupScripts::bootstrap(),
             ValidatorType::Standard => StartupScripts::validator(),
             ValidatorType::RPC => StartupScripts::rpc(),
-            ValidatorType::Client(_,_) => StartupScripts::bench_tps_client(),
+            ValidatorType::ClientWrapper(_,_) => StartupScripts::bench_tps_client(),
         }
     }
 }

@@ -21,12 +21,12 @@ use {
         },
         kubernetes::{Kubernetes, PodRequests},
         ledger_helper::LedgerHelper,
-        parse_and_format_bench_tps_args,
+        parse_and_format_transparent_args,
         release::{BuildConfig, BuildType, DeployMethod},
         validator::{LabelType, Validator},
         validator_config::ValidatorConfig,
-        ClusterDataRoot, EnvironmentConfig, Metrics, ValidatorType, SOLANA_RELEASE,
-        client_config::{ClientConfig, BenchTpsConfig, SpammerConfig},
+        ClusterDataRoot, EnvironmentConfig, Metrics, validator_type::ValidatorType, SOLANA_RELEASE,
+        client_config::{ClientConfig, BenchTpsConfig, GenericClientConfig, Client},
     },
 };
 
@@ -272,13 +272,6 @@ fn parse_matches() -> clap::ArgMatches {
                 .value_name("SECS")
                 .help("Seconds to run benchmark, then exit"),
         )
-        .arg(
-            Arg::with_name("client_repo_path")
-                .long("client-repo-path")
-                .takes_value(true)
-                .required(true)
-                .help("Path to the client repository to build and containerize"),
-        )
         .subcommand(SubCommand::with_name("bench-tps")
             .about("Run the bench-tps client")
             .arg(
@@ -329,39 +322,36 @@ fn parse_matches() -> clap::ArgMatches {
                     Not supported yet. TODO..."),
             )
         )
-        .subcommand(SubCommand::with_name("spammer")
-            .about("Run the spammer client")
+        .subcommand(SubCommand::with_name("generic-client")
+            .about("Run a generic client")
             .arg(
-                Arg::with_name("thread_sleep_ms")
-                    .long("thread-sleep-ms")
+                Arg::with_name("docker_image")
+                    .long("docker-image")
                     .takes_value(true)
-                    .value_name("MILLISECONDS")
-                    .help("Milliseconds to sleep between threads"),
+                    .value_name("<repository>/<client-name>:<tag>")
+                    .validator(validate_docker_image)
+                    .required(true)
+                    .help("Name of docker image to pull and run"),
             )
             .arg(
-                Arg::with_name("spam_type")
-                    .long("spam-type")
+                Arg::with_name("executable_name")
+                    .long("executable-name")
                     .takes_value(true)
-                    .default_value("legacy-contact-info")
-                    .possible_values(["legacy-contact-info", "contact-info", "mixed"])
-                    .help("Type of spam to send. `mixed` will send both `LegacyContactInfo` and `ContactInfo`"),
+                    .required(true)
+                    .help("The name of the executable to run inside the container"),
             )
             .arg(
-                Arg::with_name("target_node")
-                    .short('t')
-                    .long("target-node")
-                    .value_name("HOST:PORT")
+                Arg::with_name("generic_client_args")
+                    .long("generic-client-args")
                     .takes_value(true)
-                    .default_value("127.0.0.1:8001")
-                    .validator(|s| solana_net_utils::is_host_port(s.to_string()))
-                    .help("Spam gossip traffic to this HOST:PORT"),
-            )
-            .arg(
-                Arg::with_name("percent_lci")
-                    .long("percent-lci")
-                    .takes_value(true)
-                    .default_value_if("spam_type", Some("mixed"), Some("50"))
-                    .help("Percent of LegacyContactInfo to generate spam-type is `mixed`. 100-percent = percent ContactInfo to send"),
+                    .value_name("KEY VALUE")
+                    .number_of_values(1)
+                    .help("User can provide args that are transparently
+                    supplied to the client program as command line parameters.
+                    For example,
+                        --generic-client-args 'thread-sleep-ms=0 spam-type=mixed'
+                    This will start the generic clients, and supply '--thread-sleep-ms 0 --spam-type mixed'
+                    to the generic client executable."),
             )
         )
         // Heterogeneous Cluster Config
@@ -443,13 +433,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let num_rpc_nodes = value_t_or_exit!(matches, "number_of_rpc_nodes", usize);
     
     let num_clients = value_t_or_exit!(matches, "number_of_clients", usize);
-    let client_target_node = pubkey_of(&matches, "client_target_node");
     let client_duration_seconds = value_t_or_exit!(matches, "client_duration_seconds", u64);
     let client_config = if let Some(matches) = matches.subcommand_matches("bench-tps") {
         let bench_tps_config = BenchTpsConfig {
             client_type: matches.value_of("client_type").unwrap().to_string(),
             client_to_run: matches.value_of("client_to_run").unwrap().to_string(),
-            bench_tps_args: parse_and_format_bench_tps_args(matches.value_of("bench_tps_args")),
+            bench_tps_args: parse_and_format_transparent_args(matches.value_of("bench_tps_args")),
             client_wait_for_n_nodes: matches
                 .value_of("client_wait_for_n_nodes")
                 .map(|value_str| {
@@ -457,27 +446,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .parse()
                         .expect("Invalid value for client_wait_for_n_nodes")
                 }),
+            client_target_node: pubkey_of(&matches, "client_target_node"),
         };
 
         ClientConfig {
             num_clients,
-            client_target_node,
             client_duration_seconds,
-            bench_tps_config: Some(bench_tps_config),
-            spammer_config: None,
+            client: Client(bench_tps_config),
         }
     } else if let Some(matches) = matches.subcommand_matches("spammer") {
-        let spammer_config = SpammerConfig {
-            thread_sleep_ms: matches.value_of("thread_sleep_ms").map(|s| s.parse().unwrap()),
-            spam_type: get_spam_type(&matches),
+        let generic_config = GenericClientConfig {
+            image: matches.value_of("docker_image").unwrap().to_string(),
+            args: parse_and_format_transparent_args(matches.value_of("generic_client_args")),
+            executable_name: value_t_or_exit!(matches, "executable_name", String),
         };
 
         ClientConfig {
             num_clients,
-            client_target_node,
             client_duration_seconds,
-            bench_tps_config: None,
-            spammer_config: Some(spammer_config),
+            client: Client(generic_config),
         }
     } else {
         return Err("Unknown client type".into());
@@ -703,24 +690,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     if client_config.num_clients > 0 {
-        genesis.create_client_accounts(
-            client_config.num_clients,
-            &client_config.bench_tps_args,
-            DEFAULT_CLIENT_LAMPORTS_PER_SIGNATURE,
-            &config_directory,
-            cluster_data_root.get_root_path(),
-        )?;
-        info!("Client accounts created");
+        if let Client::BenchTps(ref bench_tps_config) = client_config.client {
+            genesis.create_client_accounts(
+                client_config.num_clients,
+                bench_tps_config,
+                DEFAULT_CLIENT_LAMPORTS_PER_SIGNATURE,
+                &config_directory,
+                cluster_data_root.get_root_path(),
+            )?;
+            info!("Client accounts created");
+        }
     }
 
     for client_index in 0..client_config.num_clients {
+        let client_specific_config = client_config.client.clone();
         let client = Validator::new(DockerImage::new(
             registry_name.clone(),
-            ValidatorType::Client(client_index),
+            ValidatorType::ClientWrapper(client_specific_config.clone(), client_index),
             image_name.clone(),
             image_tag.clone(),
         ));
-        cluster_images.set_item(client, ValidatorType::Client(client_index));
+        cluster_images.set_item(client, ValidatorType::ClientWrapper(client_specific_config, client_index));
     }
 
     for v in cluster_images.get_all() {
@@ -959,7 +949,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     for client in cluster_images.get_clients_mut() {
-        let client_index = if let ValidatorType::Client(index) = client.validator_type() {
+        let client_index = if let ValidatorType::ClientWrapper(client, index) = client.validator_type() {
             *index
         } else {
             return Err("Invalid Validator Type in Client".into());
@@ -982,6 +972,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             client.secret().metadata.name.clone(),
             &client.all_labels(),
             client_index,
+            &client,
         )?;
         client.set_replica_set(client_replica_set);
 

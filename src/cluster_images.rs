@@ -23,7 +23,7 @@ impl ClusterImages {
             ValidatorType::Bootstrap => self.bootstrap = Some(item),
             ValidatorType::Standard => self.validator = Some(item),
             ValidatorType::RPC => self.rpc = Some(item),
-            ValidatorType::Client(_, _) => self.clients.push(item),
+            ValidatorType::ClientWrapper(_, _) => self.clients.push(item),
         }
     }
 

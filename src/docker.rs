@@ -50,7 +50,7 @@ impl DockerImage {
 impl Display for DockerImage {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self.validator_type {
-            ValidatorType::Client(index) => write!(
+            ValidatorType::ClientWrapper(index) => write!(
                 f,
                 "{}/{}-{}-{}:{}",
                 self.registry, self.validator_type, index, self.image_name, self.tag
@@ -83,7 +83,7 @@ impl DockerConfig {
             ValidatorType::Bootstrap | ValidatorType::Standard | ValidatorType::RPC => {
                 solana_root_path.join(format!("docker-build/{validator_type}"))
             }
-            ValidatorType::Client(index) => {
+            ValidatorType::ClientWrapper(index) => {
                 solana_root_path.join(format!("docker-build/{validator_type}-{index}"))
             }
         };
@@ -172,7 +172,7 @@ impl DockerConfig {
             ValidatorType::Bootstrap | ValidatorType::Standard | ValidatorType::RPC => {
                 format!("./docker-build/{validator_type}")
             }
-            ValidatorType::Client(index) => format!("./docker-build/{validator_type}-{index}"),
+            ValidatorType::ClientWrapper(index) => format!("./docker-build/{validator_type}-{index}"),
         };
 
         let dockerfile = format!(
@@ -213,7 +213,7 @@ WORKDIR /home/solana
                 "COPY --chown=solana:solana ./config-k8s/bootstrap-validator /home/solana/ledger"
                     .to_string()
             }
-            ValidatorType::Standard | &ValidatorType::Client(_) => "".to_string(),
+            ValidatorType::Standard | &ValidatorType::ClientWrapper(_) => "".to_string(),
         }
     }
 
@@ -223,7 +223,7 @@ WORKDIR /home/solana
         validator_type: &ValidatorType,
     ) -> Result<String, Box<dyn Error>> {
         match validator_type {
-            ValidatorType::Client(index) => {
+            ValidatorType::ClientWrapper(index) => {
                 let bench_tps_path =
                     solana_root_path.join(format!("config-k8s/bench-tps-{index}.yml"));
                 if bench_tps_path.exists() {

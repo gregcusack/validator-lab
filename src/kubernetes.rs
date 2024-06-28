@@ -5,6 +5,7 @@ use {
         k8s_helpers::{self, SecretType},
         validator_config::ValidatorConfig,
         Metrics, validator_type::ValidatorType,
+        validator::Validator,
     },
     k8s_openapi::{
         api::{
@@ -321,31 +322,31 @@ impl<'a> Kubernetes<'a> {
         flags
     }
 
-    fn generate_client_command_flags(&self) -> Vec<String> {
-        let mut flags = vec![];
+    // fn generate_client_command_flags(&self) -> Vec<String> {
+    //     let mut flags = vec![];
 
-        flags.push(self.client_config.client_to_run.clone()); //client to run
-        if !self.client_config.bench_tps_args.is_empty() {
-            flags.push(self.client_config.bench_tps_args.join(" "));
-        }
+    //     flags.push(self.client_config.client_to_run.clone()); //client to run
+    //     if !self.client_config.bench_tps_args.is_empty() {
+    //         flags.push(self.client_config.bench_tps_args.join(" "));
+    //     }
 
-        flags.push(self.client_config.client_type.clone());
+    //     flags.push(self.client_config.client_type.clone());
 
-        if let Some(target_node) = self.client_config.client_target_node {
-            flags.push("--target-node".to_string());
-            flags.push(target_node.to_string());
-        }
+    //     if let Some(target_node) = self.client_config.client_target_node {
+    //         flags.push("--target-node".to_string());
+    //         flags.push(target_node.to_string());
+    //     }
 
-        flags.push("--duration".to_string());
-        flags.push(self.client_config.client_duration_seconds.to_string());
+    //     flags.push("--duration".to_string());
+    //     flags.push(self.client_config.client_duration_seconds.to_string());
 
-        if let Some(num_nodes) = self.client_config.client_wait_for_n_nodes {
-            flags.push("--num-nodes".to_string());
-            flags.push(num_nodes.to_string());
-        }
+    //     if let Some(num_nodes) = self.client_config.client_wait_for_n_nodes {
+    //         flags.push("--num-nodes".to_string());
+    //         flags.push(num_nodes.to_string());
+    //     }
 
-        flags
-    }
+    //     flags
+    // }
 
     pub fn create_selector(&self, key: &str, value: &str) -> BTreeMap<String, String> {
         k8s_helpers::create_selector(key, value)
@@ -690,6 +691,7 @@ impl<'a> Kubernetes<'a> {
         secret_name: Option<String>,
         label_selector: &BTreeMap<String, String>,
         client_index: usize,
+        client: &Validator,
     ) -> Result<ReplicaSet, Box<dyn Error>> {
         let mut env_vars = self.set_non_bootstrap_environment_variables();
         if self.metrics.is_some() {
@@ -715,6 +717,15 @@ impl<'a> Kubernetes<'a> {
         let mut command =
             vec!["/home/solana/k8s-cluster-scripts/client-startup-script.sh".to_string()];
         command.extend(self.generate_client_command_flags());
+
+        match client.validator_type() {
+            ValidatorType::ClientWrapper(client, _) => {
+                client
+            },
+            ValidatorType::Bootstrap | ValidatorType::RPC | ValidatorType::Standard => {
+                panic!("can't pass a client validator type into create_client_replica_set()");
+            }
+        }
 
         k8s_helpers::create_replica_set(
             format!(
