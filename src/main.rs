@@ -260,47 +260,8 @@ fn parse_matches() -> clap::ArgMatches {
                 .long("num-clients")
                 .short('c')
                 .takes_value(true)
-                .default_value("0")
-                .help("Number of clients")
-        )
-        .arg(
-            Arg::with_name("client_type")
-                .long("client-type")
-                .takes_value(true)
-                .default_value("tpu-client")
-                .possible_values(["tpu-client", "rpc-client"])
-                .help("Client Config. Set Client Type"),
-        )
-        .arg(
-            Arg::with_name("client_to_run")
-                .long("client-to-run")
-                .takes_value(true)
-                .default_value("bench-tps")
-                .possible_values(["bench-tps", "idle"])
-                .help("Client Config. Set Client to run"),
-        )
-        .arg(
-            Arg::with_name("bench_tps_args")
-                .long("bench-tps-args")
-                .value_name("KEY VALUE")
-                .takes_value(true)
-                .multiple(true)
-                .number_of_values(1)
-                .help("Client Config.
-                User can optionally provide extraArgs that are transparently
-                supplied to the client program as command line parameters.
-                For example,
-                    --bench-tps-args 'tx-count=5000 thread-batch-sleep-ms=250'
-                This will start bench-tps clients, and supply '--tx-count 5000 --thread-batch-sleep-ms 250'
-                to the bench-tps client."),
-        )
-        .arg(
-            Arg::with_name("client_target_node")
-                .long("client-target-node")
-                .takes_value(true)
-                .value_name("PUBKEY")
-                .help("Client Config. Optional: Specify an exact node to send transactions to
-                Not supported yet. TODO..."),
+                .default_value("1")
+                .help("Number of clients"),
         )
         .arg(
             Arg::with_name("client_duration_seconds")
@@ -308,15 +269,81 @@ fn parse_matches() -> clap::ArgMatches {
                 .takes_value(true)
                 .default_value("7500")
                 .value_name("SECS")
-                .help("Client Config. Seconds to run benchmark, then exit"),
+                .help("Seconds to run benchmark, then exit"),
         )
         .arg(
-            Arg::with_name("client_wait_for_n_nodes")
-                .long("client-wait-for-n-nodes")
-                .short('N')
+            Arg::with_name("client_repo_path")
+                .long("client-repo-path")
                 .takes_value(true)
-                .value_name("NUM")
-                .help("Client Config. Optional: Wait for NUM nodes to converge"),
+                .required(true)
+                .help("Path to the client repository to build and containerize"),
+        )
+        .subcommand(SubCommand::with_name("bench-tps")
+            .about("Run the bench-tps client")
+            .arg(
+                Arg::with_name("client_type")
+                    .long("client-type")
+                    .takes_value(true)
+                    .default_value("tpu-client")
+                    .possible_values(&["tpu-client", "rpc-client"])
+                    .help("Set Client Type"),
+            )
+            .arg(
+                Arg::with_name("bench_tps_client_to_run")
+                    .long("bench-tps-client-to-run")
+                    .takes_value(true)
+                    .default_value("bench-tps")
+                    .possible_values(["bench-tps", "idle"])
+                    .help("Client Config. Set Client to run"),
+            )
+            .arg(
+                Arg::with_name("bench_tps_args")
+                    .long("bench-tps-args")
+                    .value_name("KEY VALUE")
+                    .takes_value(true)
+                    .multiple(true)
+                    .number_of_values(1)
+                    .help("Client Config.
+                    User can optionally provide extraArgs that are transparently
+                    supplied to the client program as command line parameters.
+                    For example,
+                        --bench-tps-args 'tx-count=5000 thread-batch-sleep-ms=250'
+                    This will start bench-tps clients, and supply '--tx-count 5000 --thread-batch-sleep-ms 250'
+                    to the bench-tps client."),
+            )
+            .arg(
+                Arg::with_name("client_wait_for_n_nodes")
+                    .long("client-wait-for-n-nodes")
+                    .short('N')
+                    .takes_value(true)
+                    .value_name("NUM")
+                    .help("Optional: Wait for NUM nodes to converge"),
+            )
+            .arg(
+                Arg::with_name("client_target_node")
+                    .long("client-target-node")
+                    .takes_value(true)
+                    .value_name("PUBKEY")
+                    .help("Client Config. Optional: Specify an exact node to send transactions to
+                    Not supported yet. TODO..."),
+            )
+        )
+        .subcommand(SubCommand::with_name("spammer")
+            .about("Run the spammer client")
+            .arg(
+                Arg::with_name("thread_sleep_ms")
+                    .long("thread-sleep-ms")
+                    .takes_value(true)
+                    .value_name("MILLISECONDS")
+                    .help("Milliseconds to sleep between threads"),
+            )
+            .arg(
+                Arg::with_name("spam_type")
+                    .long("spam-type")
+                    .takes_value(true)
+                    .value_name("TYPE")
+                    .help("Type of spam to generate"),
+            )
         )
         // Heterogeneous Cluster Config
         .arg(
@@ -395,20 +422,46 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let num_validators = value_t_or_exit!(matches, "number_of_validators", usize);
     let num_rpc_nodes = value_t_or_exit!(matches, "number_of_rpc_nodes", usize);
-    let client_config = ClientConfig {
-        num_clients: value_t_or_exit!(matches, "number_of_clients", usize),
-        client_type: matches.value_of("client_type").unwrap().to_string(),
-        client_to_run: matches.value_of("client_to_run").unwrap().to_string(),
-        bench_tps_args: parse_and_format_bench_tps_args(matches.value_of("bench_tps_args")),
-        client_target_node: pubkey_of(&matches, "client_target_node"),
-        client_duration_seconds: value_t_or_exit!(matches, "client_duration_seconds", u64),
-        client_wait_for_n_nodes: matches
-            .value_of("client_wait_for_n_nodes")
-            .map(|value_str| {
-                value_str
-                    .parse()
-                    .expect("Invalid value for client_wait_for_n_nodes")
-            }),
+    
+    let num_clients = value_t_or_exit!(matches, "number_of_clients", usize);
+    let client_target_node = pubkey_of(&matches, "client_target_node");
+    let client_duration_seconds = value_t_or_exit!(matches, "client_duration_seconds", u64);
+    let client_config = if let Some(matches) = matches.subcommand_matches("bench-tps") {
+        let bench_tps_config = BenchTpsConfig {
+            client_type: matches.value_of("client_type").unwrap().to_string(),
+            client_to_run: matches.value_of("client_to_run").unwrap().to_string(),
+            bench_tps_args: parse_and_format_bench_tps_args(matches.value_of("bench_tps_args")),
+            client_wait_for_n_nodes: matches
+                .value_of("client_wait_for_n_nodes")
+                .map(|value_str| {
+                    value_str
+                        .parse()
+                        .expect("Invalid value for client_wait_for_n_nodes")
+                }),
+        };
+
+        ClientConfig {
+            num_clients,
+            client_target_node,
+            client_duration_seconds,
+            bench_tps_config: Some(bench_tps_config),
+            spammer_config: None,
+        }
+    } else if let Some(matches) = matches.subcommand_matches("spammer") {
+        let spammer_config = SpammerConfig {
+            thread_sleep_ms: matches.value_of("thread_sleep_ms").map(|s| s.parse().unwrap()),
+            spam_type: matches.value_of("spam_type").map(|s| s.to_string()),
+        };
+
+        ClientConfig {
+            num_clients,
+            client_target_node,
+            client_duration_seconds,
+            bench_tps_config: None,
+            spammer_config: Some(spammer_config),
+        }
+    } else {
+        return Err("Unknown client type".into());
     };
 
     let deploy_method = if let Some(local_path) = matches.value_of("local_path") {

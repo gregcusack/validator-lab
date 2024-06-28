@@ -101,6 +101,7 @@ impl Metrics {
     }
 }
 
+pub mod clients;
 pub mod client_config;
 pub mod cluster_images;
 pub mod docker;
