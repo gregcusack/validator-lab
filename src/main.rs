@@ -893,7 +893,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             info!("Deployed RPC Node {rpc_index} Secret");
 
             let identity_path =
-                config_directory.join(format!("rpc-node-identity-{image_tag}-{rpc_index}.json"));
+                config_directory.join(format!("rpc-node-identity-{image_tag}-0.json"));
             let rpc_keypair =
                 read_keypair_file(identity_path).expect("Failed to read rpc-node keypair file");
 

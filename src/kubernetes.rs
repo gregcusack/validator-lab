@@ -197,7 +197,7 @@ impl<'a> Kubernetes<'a> {
             "identity".to_string(),
             SecretType::File {
                 path: config_dir.join(format!(
-                    "rpc-node-identity-{}-{rpc_index}.json",
+                    "rpc-node-identity-{}-0.json",
                     self.deployment_tag
                 )),
             },
