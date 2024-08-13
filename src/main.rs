@@ -248,6 +248,13 @@ fn parse_matches() -> clap::ArgMatches {
                 .help("Amount to stake internal nodes (Sol)."),
         )
         .arg(
+            Arg::with_name("skip_primordial_stakes")
+                .long("skip-primordial-stakes")
+                .help("Do not bake validator stake accounts into genesis. \
+                Validators will be funded and staked after the cluster boots. \
+                This will result in several epochs for all of the stake to warm up"),
+        )
+        .arg(
             Arg::with_name("commission")
                 .long("commission")
                 .value_name("PERCENTAGE")
@@ -547,6 +554,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let commission = value_t_or_exit!(matches, "commission", u8);
 
+    let internal_node_stake_sol = value_t_or_exit!(matches, "internal_node_stake_sol", f64);
+    let internal_node_sol =
+        value_t_or_exit!(matches, "internal_node_sol", f64) + internal_node_stake_sol;
+        
+    let skip_primordial_stakes = matches.is_present("skip_primordial_stakes");
+
     let genesis_flags = GenesisFlags {
         hashes_per_tick: matches
             .value_of("hashes_per_tick")
@@ -596,11 +609,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             },
         ),
         commission,
+        internal_node_sol,
+        internal_node_stake_sol,
+        skip_primordial_stakes,
     };
-
-    let internal_node_stake_sol = value_t_or_exit!(matches, "internal_node_stake_sol", f64);
-    let internal_node_sol =
-        value_t_or_exit!(matches, "internal_node_sol", f64) + internal_node_stake_sol;
 
     let limit_ledger_size = value_t_or_exit!(matches, "limit_ledger_size", u64);
     let mut validator_config = ValidatorConfig {
@@ -608,6 +620,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         internal_node_stake_sol,
         commission,
         shred_version: None, // set after genesis created
+        bank_hash: None, //set after snapshot created
         max_ledger_size: if limit_ledger_size < DEFAULT_MIN_MAX_LEDGER_SHREDS {
             clap::Error::with_description(
                     format!("The provided --limit-ledger-size value was too small, the minimum value is {DEFAULT_MIN_MAX_LEDGER_SHREDS}"),
@@ -623,6 +636,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         enable_full_rpc: matches.is_present("enable_full_rpc"),
         known_validators: vec![],
         restart: !matches.is_present("no_restart"),
+        skip_primordial_stakes,
     };
 
     if num_rpc_nodes == 0 && !validator_config.enable_full_rpc {
@@ -675,6 +689,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         retain_previous_genesis,
     );
 
+    // generate standard validator accounts
+    genesis.generate_accounts(NodeType::Standard, num_validators, Some(&image_tag))?;
+    info!("Generated {num_validators} validator account(s)");
+
+    genesis.generate_accounts(NodeType::RPC, num_rpc_nodes, Some(&image_tag))?;
+    info!("Generated {num_rpc_nodes} rpc account(s)");
+
     if deploy_bootstrap_validator {
         genesis.generate_faucet()?;
         info!("Generated faucet account");
@@ -684,17 +705,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // creates genesis and writes to binary file
         genesis
-            .generate(cluster_data_root.get_root_path(), &exec_path)
+            .generate(cluster_data_root.get_root_path(), &exec_path, num_validators, &image_tag)
             .await?;
         info!("Genesis created");
+
+        if !skip_primordial_stakes {
+            genesis.create_snapshot(&exec_path)?;
+
+            let bank_hash = genesis.get_bank_hash()?;
+            kub_controller.set_bank_hash(bank_hash);
+        }
     }
-
-    // generate standard validator accounts
-    genesis.generate_accounts(NodeType::Standard, num_validators, Some(&image_tag))?;
-    info!("Generated {num_validators} validator account(s)");
-
-    genesis.generate_accounts(NodeType::RPC, num_rpc_nodes, Some(&image_tag))?;
-    info!("Generated {num_rpc_nodes} rpc account(s)");
 
     let ledger_dir = config_directory.join("bootstrap-validator");
     let shred_version = LedgerHelper::get_shred_version(&ledger_dir)?;

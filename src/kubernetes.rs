@@ -89,6 +89,10 @@ impl<'a> Kubernetes<'a> {
         self.validator_config.shred_version = Some(shred_version);
     }
 
+    pub fn set_bank_hash(&mut self, bank_hash: String) {
+        self.validator_config.bank_hash = Some(bank_hash);
+    }
+
     async fn get_namespaces(&self) -> Result<ObjectList<Namespace>, kube::Error> {
         let namespaces: Api<Namespace> = Api::all(self.k8s_client.clone());
         let namespace_list = namespaces.list(&ListParams::default()).await?;
@@ -299,6 +303,10 @@ impl<'a> Kubernetes<'a> {
         let mut command = vec![command_path];
         command.extend(self.generate_bootstrap_command_flags());
 
+        for c in &command {
+            info!("command: {:?}", c);
+        }
+
         k8s_helpers::create_replica_set(
             format!("{}-{}", image.node_type(), image.tag()),
             self.namespace.clone(),
@@ -344,6 +352,21 @@ impl<'a> Kubernetes<'a> {
         self.generate_command_flags(&mut flags);
         if self.validator_config.enable_full_rpc {
             Self::generate_full_rpc_flags(&mut flags);
+        }
+
+        if let Some(shred_version) = self.validator_config.shred_version {
+            flags.push("--expected-shred-version".to_string());
+            flags.push(shred_version.to_string());
+        }
+
+        if let Some(bank_hash) = &self.validator_config.bank_hash {
+            flags.push("--expected-bank-hash".to_string());
+            flags.push(bank_hash.to_string());
+        }
+
+        if !self.validator_config.skip_primordial_stakes {
+            flags.push("--wait-for-supermajority".to_string());
+            flags.push("1".to_string());
         }
 
         flags
@@ -562,6 +585,16 @@ impl<'a> Kubernetes<'a> {
         if let Some(shred_version) = self.validator_config.shred_version {
             flags.push("--expected-shred-version".to_string());
             flags.push(shred_version.to_string());
+        }
+
+        if let Some(bank_hash) = &self.validator_config.bank_hash {
+            flags.push("--expected-bank-hash".to_string());
+            flags.push(bank_hash.to_string());
+        }
+
+        if !self.validator_config.skip_primordial_stakes {
+            flags.push("--wait-for-supermajority".to_string());
+            flags.push("1".to_string());
         }
 
         self.add_known_validators_if_exists(&mut flags);

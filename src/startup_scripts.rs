@@ -65,6 +65,9 @@ while [[ -n $1 ]]; do
     elif [[ $1 = --dev-halt-at-slot ]]; then # not enabled in net.sh
       args+=("$1" "$2")
       shift 2
+    elif [[ $1 = --expected-shred-version ]]; then
+      args+=("$1" "$2")
+      shift 2
     elif [[ $1 = --dynamic-port-range ]]; then # not enabled in net.sh
       args+=("$1" "$2")
       shift 2
@@ -280,6 +283,7 @@ EOF
   exit 1
 }
 
+run_validator_stake_setup=true
 positional_args=()
 while [[ -n $1 ]]; do
   if [[ ${1:0:1} = - ]]; then
@@ -409,6 +413,7 @@ while [[ -n $1 ]]; do
       shift 2
     elif [[ $1 == --wait-for-supermajority ]]; then
       args+=("$1" "$2")
+      run_validator_stake_setup=false
       shift 2
     elif [[ $1 == --expected-bank-hash ]]; then
       args+=("$1" "$2")
@@ -605,10 +610,12 @@ run_delegate_stake() {
   solana --keypair $IDENTITY_FILE stake-account validator-accounts/stake.json
 }
 
-echo "get airdrop and create vote account"
-setup_validator
-echo "create stake account and delegate stake"
-run_delegate_stake 
+if $run_validator_stake_setup; then
+  echo "get airdrop and create vote account"
+  setup_validator
+  echo "create stake account and delegate stake"
+  run_delegate_stake
+fi
 
 echo running validator:
 

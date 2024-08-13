@@ -53,6 +53,7 @@ fn parse_spl_genesis_file(
     Ok(args)
 }
 
+#[derive(Debug)]
 pub struct GenesisFlags {
     pub hashes_per_tick: String,
     pub slots_per_epoch: Option<u64>,
@@ -64,34 +65,9 @@ pub struct GenesisFlags {
     pub bootstrap_validator_sol: Option<f64>,
     pub bootstrap_validator_stake_sol: Option<f64>,
     pub commission: u8,
-}
-
-impl std::fmt::Display for GenesisFlags {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(
-            f,
-            "GenesisFlags {{\n\
-             hashes_per_tick: {:?},\n\
-             slots_per_epoch: {:?},\n\
-             target_lamports_per_signature: {:?},\n\
-             faucet_lamports: {:?},\n\
-             enable_warmup_epochs: {},\n\
-             max_genesis_archive_unpacked_size: {:?},\n\
-             cluster_type: {}\n\
-             bootstrap_validator_sol: {:?},\n\
-             bootstrap_validator_stake_sol: {:?},\n\
-             }}",
-            self.hashes_per_tick,
-            self.slots_per_epoch,
-            self.target_lamports_per_signature,
-            self.faucet_lamports,
-            self.enable_warmup_epochs,
-            self.max_genesis_archive_unpacked_size,
-            self.cluster_type,
-            self.bootstrap_validator_sol,
-            self.bootstrap_validator_stake_sol,
-        )
-    }
+    pub internal_node_sol: f64,
+    pub internal_node_stake_sol: f64,
+    pub skip_primordial_stakes: bool,
 }
 
 fn append_client_accounts_to_file(
@@ -307,7 +283,7 @@ impl Genesis {
         Ok(child)
     }
 
-    fn setup_genesis_flags(&self) -> Result<Vec<String>, Box<dyn Error>> {
+    fn setup_genesis_flags(&self, num_validators: usize, image_tag: &str) -> Result<Vec<String>, Box<dyn Error>> {
         let mut args = vec![
             "--bootstrap-validator-lamports".to_string(),
             sol_to_lamports(
@@ -378,6 +354,21 @@ impl Genesis {
             args.push(path);
         }
 
+        if !self.flags.skip_primordial_stakes {
+            for i in 0..num_validators {
+                args.push("--bootstrap-validator".to_string());
+                for account_type in ["identity", "vote-account", "stake-account"].iter() {
+                    let path = self
+                        .config_dir
+                        .join(format!("validator-{account_type}-{image_tag}-{i}.json"))
+                        .into_os_string()
+                        .into_string()
+                        .map_err(|_| "Failed to convert path to string")?;
+                    args.push(path);
+                }
+            }
+        }
+
         if let Some(slots_per_epoch) = self.flags.slots_per_epoch {
             args.push("--slots-per-epoch".to_string());
             args.push(slots_per_epoch.to_string());
@@ -405,19 +396,21 @@ impl Genesis {
         &mut self,
         solana_root_path: &Path,
         exec_path: &Path,
+        num_validators: usize,
+        image_tag: &str,
     ) -> Result<(), Box<dyn Error>> {
-        let mut args = self.setup_genesis_flags()?;
+        let mut args = self.setup_genesis_flags(num_validators, image_tag)?;
         let mut spl_args = self.setup_spl_args(solana_root_path).await?;
         args.append(&mut spl_args);
 
         let progress_bar = new_spinner_progress_bar();
         progress_bar.set_message(format!("{SUN}Building Genesis..."));
 
-        debug!("genesis args:");
+        info!("genesis args:");
         for arg in &args {
-            debug!("{arg}");
+            info!("{arg}");
         }
-        let executable_path = exec_path.join("solana-genesis");
+        let executable_path: PathBuf = exec_path.join("solana-genesis");
         let output = Command::new(executable_path)
             .args(&args)
             .output()
@@ -436,4 +429,68 @@ impl Genesis {
 
         Ok(())
     }
+
+    pub fn create_snapshot(
+        &self,
+        exec_path: &Path,
+    ) -> Result<(), Box<dyn Error>> {
+        let warp_slot = 1;
+        let executable_path: PathBuf = exec_path.join("agave-ledger-tool");
+        let args = vec![
+            "-l".to_string(),
+            self.config_dir.join("bootstrap-validator").into_os_string().into_string().unwrap(),
+            "create-snapshot".to_string(),
+            "0".to_string(),
+            self.config_dir.join("bootstrap-validator").into_os_string().into_string().unwrap(),
+            "--warp-slot".to_string(),
+            warp_slot.to_string(),
+        ];
+        let output = Command::new(executable_path)
+            .args(&args)
+            .output()
+            .expect("Failed to execute agave-ledger-tool");
+        if !output.status.success() {
+            return Err(format!(
+                "Failed to create snapshot. err: {:?}",
+                String::from_utf8(output.stderr)
+            )
+            .into());
+        }
+        info!("Snapshot creation complete");
+        Ok(())
+    }
+
+    pub fn get_bank_hash(
+        &self,
+    ) -> Result<String, Box<dyn Error>> {
+        let agave_output = Command::new("agave-ledger-tool")
+            .args(&[
+                "-l", 
+                self.config_dir.join("bootstrap-validator").into_os_string().into_string().unwrap().as_str(),
+                "verify",
+                "--halt-at-slot", "0",
+                "--print-bank-hash",
+                "--output", "json"
+            ])
+            .stdout(Stdio::piped())
+            .spawn()?
+            .stdout
+            .expect("Failed to capture agave-ledger-tool output");
+
+        // Use `jq` to filter the JSON output and extract the `.hash` value
+        let jq_output = Command::new("jq")
+            .arg("-r")
+            .arg(".hash")
+            .stdin(agave_output)
+            .output()?;
+
+        // Convert the output to a String
+        let bank_hash = String::from_utf8_lossy(&jq_output.stdout).trim().to_string();
+
+        // Print or use the bank hash
+        info!("bankHash: {}", bank_hash);
+
+        Ok(bank_hash)
+    }
+
 }

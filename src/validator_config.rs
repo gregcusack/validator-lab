@@ -13,4 +13,6 @@ pub struct ValidatorConfig {
     pub enable_full_rpc: bool,
     pub known_validators: Vec<Pubkey>,
     pub restart: bool,
+    pub bank_hash: Option<String>,
+    pub skip_primordial_stakes: bool,
 }
