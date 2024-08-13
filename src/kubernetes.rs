@@ -303,10 +303,6 @@ impl<'a> Kubernetes<'a> {
         let mut command = vec![command_path];
         command.extend(self.generate_bootstrap_command_flags());
 
-        for c in &command {
-            info!("command: {:?}", c);
-        }
-
         k8s_helpers::create_replica_set(
             format!("{}-{}", image.node_type(), image.tag()),
             self.namespace.clone(),

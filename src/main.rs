@@ -557,7 +557,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let internal_node_stake_sol = value_t_or_exit!(matches, "internal_node_stake_sol", f64);
     let internal_node_sol =
         value_t_or_exit!(matches, "internal_node_sol", f64) + internal_node_stake_sol;
-        
+
     let skip_primordial_stakes = matches.is_present("skip_primordial_stakes");
 
     let genesis_flags = GenesisFlags {
@@ -620,7 +620,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         internal_node_stake_sol,
         commission,
         shred_version: None, // set after genesis created
-        bank_hash: None, //set after snapshot created
+        bank_hash: None,     //set after snapshot created
         max_ledger_size: if limit_ledger_size < DEFAULT_MIN_MAX_LEDGER_SHREDS {
             clap::Error::with_description(
                     format!("The provided --limit-ledger-size value was too small, the minimum value is {DEFAULT_MIN_MAX_LEDGER_SHREDS}"),
@@ -705,7 +705,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // creates genesis and writes to binary file
         genesis
-            .generate(cluster_data_root.get_root_path(), &exec_path, num_validators, &image_tag)
+            .generate(
+                cluster_data_root.get_root_path(),
+                &exec_path,
+                num_validators,
+                &image_tag,
+            )
             .await?;
         info!("Genesis created");
 

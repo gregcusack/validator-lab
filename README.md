@@ -9,6 +9,17 @@ In Validator Lab we can deploy and test new validator features quickly and easil
 
 ## How to run
 
+### Requirements
+1) Docker. Create `docker` group add user to `docker` group
+```
+sudo usermod -aG docker $USER
+newgrp docker
+```
+2) jq
+```
+sudo apt install jq
+```
+
 ### Setup
 Ensure you have the proper permissions to connect to the Monogon Kubernetes endpoint. Reach out to Leo on slack if you need the key (you do if you haven't asked him in the past).
 
@@ -86,6 +97,7 @@ cargo run --bin cluster --
     --cpu-requests <cores>
     --memory-requests <memory>
     # deploy with clients
+    bench-tps
     -c <num-clients>
     --client-type <client-type e.g. tpu-client>
     --client-to-run <type-of-client e.g. bench-tps>
@@ -106,6 +118,41 @@ For client Version >= 2.0.0
 ```
 --bench-tps-args 'tx-count=5000 keypair-multiplier=4 threads=16 num-lamports-per-account=200000000 sustained tpu-connection-pool-size=8 thread-batch-sleep-ms=0 commitment-config=processed'
 ```
+
+## Baking Validator Stakes into Genesis
+- You can bake validator accounts and delegated stakes into genesis creation by passing in `--validator-balances-file <file-path-to-validator-balances-yml>`. This way when the cluster boots up, all validators will consistently be in the leader schedule and no need to wait for stake to warm up. In the validator balances file, you can set specific validator balances and stake amounts. 
+The validator balances file has the following yaml format:
+```
+---
+v0:
+  balances_lamports: <balance0>
+  stake_lamports: <stake0>
+v1: 
+  balances_lamports: <balance1>
+  stake_lamports: <stake1>
+...
+vN:
+  balances_lamports: <balanceN>
+  stake_lamports: <stakeN>
+```
+^ Note, the file must have the `v0`, `v1`, ..., `vN` format. The number of validators in this file must match `--num-validators <number-of-validators>`
+
+For example, we could create: `validator-balances.yml` and have it look like:
+```
+---
+v0:
+  balance_lamports: 400000000000
+  stake_lamports: 40000000000
+v1:
+  balance_lamports: 200000000000
+  stake_lamports: 20000000000
+v2:
+  balance_lamports: 300000000000
+  stake_lamports: 30000000000
+```
+
+- If you do not want to bake stakes into genesis and instead want the stake to warm up after deplyoyment, pass in the flag `--skip-primordial-stakes` and leave out `--validator-balances`
+- `--internal-node-sol`, `--internal-node-stake-sol`, are `--comission` are only valid with `--skip-primordial-stakes`
 
 ## Metrics
 1) Setup metrics database:
@@ -128,7 +175,7 @@ You can add in RPC nodes. These sit behind a load balancer. Load balancer distri
 --num-rpc-nodes <num-nodes>
 ```
 
-## Heterogeneous Clusters
+## Heterogeneous Agave Clusters
 You can deploy a cluster with heterogeneous validator versions
 For example, say you want to deploy a cluster with the following nodes:
 * 1 bootstrap, 3 validators, 1 rpc-node, and 1 client running some agave-repo local commit
@@ -155,7 +202,9 @@ cargo run --bin cluster -- -n <namespace> --registry <registry> --release-channe
 
 For steps (2) and (3), when using `--no-bootstrap`, we assume that the directory at `--cluster-data-path <directory>` has the correct genesis, bootstrap identity, and faucet account stored. These are all created in step (1).
 
-Note: We can't deploy heterogeneous clusters across v1.17 and v1.18 due to feature differences. Hope to fix this in the future. Have something where we can specifically define which features to enable.
+Notes: 
+1) We can't deploy heterogeneous clusters across v1.17 and v1.18 due to feature differences. Hope to fix this in the future. Have something where we can specifically define which features to enable.
+2) Heterogenous clusters with primordial stakes baked into genesis is not supported yet
 
 ## Querying the RPC from outside the cluster
 The cluster now has an external IP/port that can be queried to reach the cluster RPC. The external RPC port will be logged during cluster boot, e.g.:

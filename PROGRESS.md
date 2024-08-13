@@ -79,16 +79,23 @@ By here:
 - We can deploy bootstrap, N validators, M RPC nodes, and C clients with various command line configurations
 - We can control the how and where we deploy kubernetes pods
 
-- [ ] Other Features
+- [x] Other Features
     - [x] Heterogeneous Clusters (i.e. multiple validator versions)
     - [x] Deploy specific commit
     - [x] Generic Clients
-    - [ ] Deploy with user-defined stake distribution
+    - [x] Deploy with user-defined stake distribution
 
 By here:
 - We can deploy bootstrap, N validators, M RPC nodes, and C clients with various command line configurations
 - We can control the how and where we deploy kubernetes pods
 - We can deploy multiple cluster versions and have them interact with each other
 - We can define a stake distribution for our cluster
+
+Features TODO
+- [ ] Heterogenous Agave/Firedancer clusters
+- [ ] Latency and packet drop simulation
+- [ ] Feature gate activation
+- [ ] High Level: Usage scheduling
+  - based on a user's deployment scale, need time-based user multiplexing of infrastructure
 
 DONE
