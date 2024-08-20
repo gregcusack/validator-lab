@@ -62,8 +62,8 @@ pub struct GenesisFlags {
     pub enable_warmup_epochs: bool,
     pub max_genesis_archive_unpacked_size: Option<u64>,
     pub cluster_type: String,
-    pub bootstrap_validator_sol: Option<f64>,
-    pub bootstrap_validator_stake_sol: Option<f64>,
+    pub bootstrap_validator_sol: f64,
+    pub bootstrap_validator_stake_sol: f64,
     pub commission: u8,
     pub internal_node_sol: f64,
     pub internal_node_stake_sol: f64,
@@ -180,6 +180,7 @@ impl Genesis {
         for (i, keypair) in keypairs.iter().enumerate() {
             let account_index = i / account_types.len();
             let account = &account_types[i % account_types.len()];
+            info!("Account: {account}, node_type: {node_type}");
             let filename = match node_type {
                 NodeType::Bootstrap => {
                     format!("{node_type}/{account}.json")
@@ -290,19 +291,9 @@ impl Genesis {
     ) -> Result<Vec<String>, Box<dyn Error>> {
         let mut args = vec![
             "--bootstrap-validator-lamports".to_string(),
-            sol_to_lamports(
-                self.flags
-                    .bootstrap_validator_sol
-                    .unwrap_or(DEFAULT_BOOTSTRAP_NODE_SOL),
-            )
-            .to_string(),
+            sol_to_lamports(self.flags.bootstrap_validator_sol).to_string(),
             "--bootstrap-validator-stake-lamports".to_string(),
-            sol_to_lamports(
-                self.flags
-                    .bootstrap_validator_stake_sol
-                    .unwrap_or(DEFAULT_BOOTSTRAP_NODE_STAKE_SOL),
-            )
-            .to_string(),
+            sol_to_lamports(self.flags.bootstrap_validator_stake_sol).to_string(),
             "--hashes-per-tick".to_string(),
             self.flags.hashes_per_tick.clone(),
             "--max-genesis-archive-unpacked-size".to_string(),
@@ -360,7 +351,7 @@ impl Genesis {
 
         if !self.flags.skip_primordial_stakes {
             for i in 0..num_validators {
-                args.push("--bootstrap-validator".to_string());
+                args.push("--internal-validator".to_string());
                 for account_type in ["identity", "vote-account", "stake-account"].iter() {
                     let path = self
                         .config_dir
@@ -371,6 +362,15 @@ impl Genesis {
                     args.push(path);
                 }
             }
+
+            // stake delegated from internal_node_sol
+            let internal_node_lamports =
+                self.flags.internal_node_sol - self.flags.internal_node_stake_sol;
+            args.push("--internal-validator-lamports".to_string());
+            args.push(sol_to_lamports(internal_node_lamports).to_string());
+
+            args.push("--internal-validator-stake-lamports".to_string());
+            args.push(sol_to_lamports(self.flags.internal_node_stake_sol).to_string());
         }
 
         if let Some(slots_per_epoch) = self.flags.slots_per_epoch {

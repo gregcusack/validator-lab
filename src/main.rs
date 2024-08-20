@@ -238,14 +238,14 @@ fn parse_matches() -> clap::ArgMatches {
                 .long("internal-node-sol")
                 .takes_value(true)
                 .default_value(&DEFAULT_INTERNAL_NODE_SOL.to_string())
-                .help("Amount to fund internal nodes in genesis config."),
+                .help("Amount to fund internal nodes in genesis"),
         )
         .arg(
             Arg::with_name("internal_node_stake_sol")
                 .long("internal-node-stake-sol")
                 .takes_value(true)
                 .default_value(&DEFAULT_INTERNAL_NODE_STAKE_SOL.to_string())
-                .help("Amount to stake internal nodes (Sol)."),
+                .help("Amount to stake internal nodes (Sol) in genesis"),
         )
         .arg(
             Arg::with_name("skip_primordial_stakes")
@@ -594,19 +594,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .value_of("cluster_type")
             .unwrap_or_default()
             .to_string(),
-        bootstrap_validator_sol: matches
-            .value_of("bootstrap_validator_sol")
-            .map(|value_str| {
-                value_str
-                    .parse()
-                    .expect("Invalid value for bootstrap_validator_sol")
-            }),
-        bootstrap_validator_stake_sol: matches.value_of("bootstrap_validator_stake_sol").map(
-            |value_str| {
-                value_str
-                    .parse()
-                    .expect("Invalid value for bootstrap_validator_stake_sol")
-            },
+        bootstrap_validator_sol: value_t_or_exit!(matches, "bootstrap_validator_sol", f64),
+        bootstrap_validator_stake_sol: value_t_or_exit!(
+            matches,
+            "bootstrap_validator_stake_sol",
+            f64
         ),
         commission,
         internal_node_sol,
