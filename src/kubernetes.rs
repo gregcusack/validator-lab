@@ -569,14 +569,16 @@ impl<'a> Kubernetes<'a> {
             Self::generate_full_rpc_flags(&mut flags);
         }
 
-        flags.push("--internal-node-stake-sol".to_string());
-        flags.push(self.validator_config.internal_node_stake_sol.to_string());
+        if self.validator_config.skip_primordial_stakes {
+            flags.push("--internal-node-stake-sol".to_string());
+            flags.push(self.validator_config.internal_node_stake_sol.to_string());
 
-        flags.push("--commission".to_string());
-        flags.push(self.validator_config.commission.to_string());
+            flags.push("--internal-node-sol".to_string());
+            flags.push(self.validator_config.internal_node_sol.to_string());
 
-        flags.push("--internal-node-sol".to_string());
-        flags.push(self.validator_config.internal_node_sol.to_string());
+            flags.push("--commission".to_string());
+            flags.push(self.validator_config.commission.to_string());
+        }
 
         if let Some(shred_version) = self.validator_config.shred_version {
             flags.push("--expected-shred-version".to_string());

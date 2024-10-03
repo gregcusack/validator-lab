@@ -2,12 +2,14 @@ use {
     crate::{fetch_spl, new_spinner_progress_bar, NodeType, SOLANA_RELEASE, SUN, WRITING},
     log::*,
     rand::Rng,
+    serde::{Deserialize, Serialize},
     solana_core::gen_keys::GenKeys,
     solana_sdk::{
         native_token::sol_to_lamports,
-        signature::{write_keypair_file, Keypair},
+        signature::{write_keypair_file, Keypair, Signer},
     },
     std::{
+        collections::HashMap,
         error::Error,
         fs::{File, OpenOptions},
         io::{self, BufRead, BufWriter, Read, Write},
@@ -24,6 +26,35 @@ pub const DEFAULT_INTERNAL_NODE_SOL: f64 = 100.0;
 pub const DEFAULT_BOOTSTRAP_NODE_STAKE_SOL: f64 = 10.0;
 pub const DEFAULT_BOOTSTRAP_NODE_SOL: f64 = 100.0;
 pub const DEFAULT_CLIENT_LAMPORTS_PER_SIGNATURE: u64 = 42;
+const VALIDATOR_ACCOUNTS_KEYPAIR_COUNT: usize = 3;
+const RPC_ACCOUNTS_KEYPAIR_COUNT: usize = 1;
+
+#[derive(Debug, Deserialize)]
+struct ValidatorStakes {
+    balance_lamports: u64,
+    stake_lamports: u64,
+}
+
+fn generate_filename(node_type: &NodeType, account_type: &str, index: usize) -> String {
+    match node_type {
+        NodeType::Bootstrap => format!("{node_type}/{account_type}.json"),
+        NodeType::Standard | NodeType::RPC => {
+            format!("{node_type}-{account_type}-{index}.json")
+        }
+        NodeType::Client(_, _) => panic!("Client type not supported"),
+    }
+}
+
+/// A validator account where the data is encoded as a Base64 string.
+/// Includes the vote account and stake account.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ValidatorAccounts {
+    pub balance_lamports: u64,
+    pub stake_lamports: u64,
+    pub identity_account: String,
+    pub vote_account: String,
+    pub stake_account: String,
+}
 
 fn parse_spl_genesis_file(
     spl_file: &PathBuf,
@@ -68,6 +99,7 @@ pub struct GenesisFlags {
     pub internal_node_sol: f64,
     pub internal_node_stake_sol: f64,
     pub skip_primordial_stakes: bool,
+    pub validator_accounts_file: Option<PathBuf>,
 }
 
 fn append_client_accounts_to_file(
@@ -97,11 +129,18 @@ fn append_client_accounts_to_file(
 pub struct Genesis {
     config_dir: PathBuf,
     key_generator: GenKeys,
+    pub validator_stakes_file: Option<PathBuf>,
+    validator_accounts: HashMap<String, ValidatorAccounts>,
     pub flags: GenesisFlags,
 }
 
 impl Genesis {
-    pub fn new(config_dir: PathBuf, flags: GenesisFlags, retain_previous_genesis: bool) -> Self {
+    pub fn new(
+        config_dir: PathBuf,
+        validator_stakes_file: Option<PathBuf>,
+        flags: GenesisFlags,
+        retain_previous_genesis: bool,
+    ) -> Self {
         // if we are deploying a heterogeneous cluster
         // all deployments after the first must retain the original genesis directory
         if !retain_previous_genesis {
@@ -116,6 +155,8 @@ impl Genesis {
         Self {
             config_dir,
             key_generator: GenKeys::new(seed),
+            validator_stakes_file,
+            validator_accounts: HashMap::default(),
             flags,
         }
     }
@@ -149,16 +190,12 @@ impl Genesis {
             }
         };
 
-        let account_types: Vec<String> = if let Some(tag) = deployment_tag {
-            account_types
+        let account_types: Vec<String> = match deployment_tag {
+            Some(tag) => account_types
                 .into_iter()
-                .map(|acct| format!("{}-{}", acct, tag))
-                .collect()
-        } else {
-            account_types
-                .into_iter()
-                .map(|acct| acct.to_string())
-                .collect()
+                .map(|acct| format!("{acct}-{tag}"))
+                .collect(),
+            None => account_types.into_iter().map(String::from).collect(),
         };
 
         let total_accounts_to_generate = number_of_accounts * account_types.len();
@@ -166,35 +203,87 @@ impl Genesis {
             .key_generator
             .gen_n_keypairs(total_accounts_to_generate as u64);
 
+        if node_type == NodeType::Standard {
+            self.initialize_validator_accounts(&node_type, &keypairs);
+        }
+
         self.write_accounts_to_file(&node_type, &account_types, &keypairs)?;
+        // self.initialize_validator_accounts(&keypairs);
 
         Ok(())
     }
 
     fn write_accounts_to_file(
-        &self,
+        &mut self,
         node_type: &NodeType,
         account_types: &[String],
         keypairs: &[Keypair],
     ) -> Result<(), Box<dyn Error>> {
-        for (i, keypair) in keypairs.iter().enumerate() {
-            let account_index = i / account_types.len();
-            let account = &account_types[i % account_types.len()];
-            info!("Account: {account}, node_type: {node_type}");
-            let filename = match node_type {
-                NodeType::Bootstrap => {
-                    format!("{node_type}/{account}.json")
+        let chunk_size = match node_type {
+            NodeType::Bootstrap | NodeType::Standard => VALIDATOR_ACCOUNTS_KEYPAIR_COUNT,
+            NodeType::RPC => RPC_ACCOUNTS_KEYPAIR_COUNT,
+            NodeType::Client(_, _) => return Err("Client type not supported".into()),
+        };
+        for (i, account_type_keypair) in keypairs.chunks_exact(chunk_size).enumerate() {
+            match node_type {
+                NodeType::Bootstrap | NodeType::Standard => {
+                    // Create a filename for each type of account based on node type and index
+                    let identity_filename =
+                        generate_filename(node_type, account_types[0].as_str(), i);
+                    let stake_filename = generate_filename(node_type, account_types[1].as_str(), i);
+                    let vote_filename = generate_filename(node_type, account_types[2].as_str(), i);
+
+                    write_keypair_file(
+                        &account_type_keypair[0],
+                        self.config_dir.join(identity_filename),
+                    )?;
+                    write_keypair_file(
+                        &account_type_keypair[1],
+                        self.config_dir.join(vote_filename),
+                    )?;
+                    write_keypair_file(
+                        &account_type_keypair[2],
+                        self.config_dir.join(stake_filename),
+                    )?;
                 }
-                NodeType::Standard | NodeType::RPC => {
-                    format!("{node_type}-{account}-{account_index}.json")
+                NodeType::RPC => {
+                    let identity_filename =
+                        generate_filename(node_type, account_types[0].as_str(), i);
+                    write_keypair_file(
+                        &account_type_keypair[0],
+                        self.config_dir.join(identity_filename),
+                    )?;
                 }
-                NodeType::Client(_, _) => panic!("Client type not supported"),
+                NodeType::Client(_, _) => return Err("Client type not supported".into()),
+            }
+        }
+
+        Ok(())
+    }
+
+    fn initialize_validator_accounts(&mut self, node_type: &NodeType, keypairs: &[Keypair]) {
+        if node_type != &NodeType::Standard {
+            return;
+        }
+        for (i, account_type_keypair) in keypairs
+            .chunks_exact(VALIDATOR_ACCOUNTS_KEYPAIR_COUNT)
+            .enumerate()
+        {
+            let identity_account = account_type_keypair[0].pubkey().to_string();
+            let vote_account = account_type_keypair[1].pubkey().to_string();
+            let stake_account = account_type_keypair[2].pubkey().to_string();
+
+            let validator_account = ValidatorAccounts {
+                balance_lamports: 0,
+                stake_lamports: 0,
+                identity_account,
+                vote_account,
+                stake_account,
             };
 
-            let outfile = self.config_dir.join(&filename);
-            write_keypair_file(keypair, outfile)?;
+            let key = format!("v{i}");
+            self.validator_accounts.insert(key, validator_account);
         }
-        Ok(())
     }
 
     pub fn create_client_accounts(
@@ -284,11 +373,7 @@ impl Genesis {
         Ok(child)
     }
 
-    fn setup_genesis_flags(
-        &self,
-        num_validators: usize,
-        image_tag: &str,
-    ) -> Result<Vec<String>, Box<dyn Error>> {
+    fn setup_genesis_flags(&self) -> Result<Vec<String>, Box<dyn Error>> {
         let mut args = vec![
             "--bootstrap-validator-lamports".to_string(),
             sol_to_lamports(self.flags.bootstrap_validator_sol).to_string(),
@@ -349,28 +434,20 @@ impl Genesis {
             args.push(path);
         }
 
-        if !self.flags.skip_primordial_stakes {
-            for i in 0..num_validators {
-                args.push("--internal-validator".to_string());
-                for account_type in ["identity", "vote-account", "stake-account"].iter() {
-                    let path = self
-                        .config_dir
-                        .join(format!("validator-{account_type}-{image_tag}-{i}.json"))
-                        .into_os_string()
-                        .into_string()
-                        .map_err(|_| "Failed to convert path to string")?;
-                    args.push(path);
-                }
-            }
-
-            // stake delegated from internal_node_sol
-            let internal_node_lamports =
-                self.flags.internal_node_sol - self.flags.internal_node_stake_sol;
-            args.push("--internal-validator-lamports".to_string());
-            args.push(sol_to_lamports(internal_node_lamports).to_string());
-
-            args.push("--internal-validator-stake-lamports".to_string());
-            args.push(sol_to_lamports(self.flags.internal_node_stake_sol).to_string());
+        if let Some(validator_accounts_file) = &self.flags.validator_accounts_file {
+            args.push("--validator-accounts-file".to_string());
+            args.push(
+                validator_accounts_file
+                    .clone()
+                    .into_os_string()
+                    .into_string()
+                    .map_err(|err| {
+                        std::io::Error::new(
+                            std::io::ErrorKind::InvalidData,
+                            format!("Invalid Unicode data in path: {:?}", err),
+                        )
+                    })?,
+            );
         }
 
         if let Some(slots_per_epoch) = self.flags.slots_per_epoch {
@@ -400,10 +477,8 @@ impl Genesis {
         &mut self,
         solana_root_path: &Path,
         exec_path: &Path,
-        num_validators: usize,
-        image_tag: &str,
     ) -> Result<(), Box<dyn Error>> {
-        let mut args = self.setup_genesis_flags(num_validators, image_tag)?;
+        let mut args = self.setup_genesis_flags()?;
         let mut spl_args = self.setup_spl_args(solana_root_path).await?;
         args.append(&mut spl_args);
 
@@ -504,5 +579,60 @@ impl Genesis {
         info!("bankHash: {bank_hash}");
 
         Ok(bank_hash)
+    }
+
+    pub fn load_validator_genesis_stakes_from_file(&mut self) -> io::Result<()> {
+        let validator_stakes_file = match &self.validator_stakes_file {
+            Some(file) => file,
+            None => {
+                warn!("validator_stakes_file is None");
+                return Ok(());
+            }
+        };
+        let file = File::open(validator_stakes_file)?;
+        let validator_stakes: HashMap<String, ValidatorStakes> = serde_yaml::from_reader(file)
+            .map_err(|err| io::Error::new(io::ErrorKind::Other, format!("{err:?}")))?;
+
+        if validator_stakes.len() != self.validator_accounts.len() {
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                format!(
+                    "Number of validator stakes ({}) does not match number of validator accounts ({})",
+                    validator_stakes.len(), self.validator_accounts.len()
+                ),
+            ));
+        }
+
+        // match `validator_stakes` with corresponding `ValidatorAccounts` and update balance and stake
+        for (key, stake) in validator_stakes {
+            if let Some(validator_account) = self.validator_accounts.get_mut(&key) {
+                validator_account.balance_lamports = stake.balance_lamports;
+                validator_account.stake_lamports = stake.stake_lamports;
+            } else {
+                return Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    format!("Validator account for key '{key}' not found"),
+                ));
+            }
+        }
+
+        self.write_validator_genesis_accouts_to_file()?;
+        Ok(())
+    }
+
+    fn write_validator_genesis_accouts_to_file(&mut self) -> std::io::Result<()> {
+        // get ValidatorAccounts vec to write to file for solana-genesis
+        let validator_accounts_vec: Vec<ValidatorAccounts> =
+            self.validator_accounts.values().cloned().collect();
+        let output_file = self.config_dir.join("validator-genesis-accounts.yml");
+        self.flags.validator_accounts_file = Some(output_file.clone());
+
+        // write ValidatorAccouns to yaml file for solana-genesis
+        let file = File::create(&output_file)?;
+        serde_yaml::to_writer(file, &validator_accounts_vec)
+            .map_err(|err| io::Error::new(io::ErrorKind::Other, format!("{err:?}")))?;
+
+        info!("Validator genesis accounts successfully written to {output_file:?}");
+        Ok(())
     }
 }

@@ -597,7 +597,7 @@ run_delegate_stake() {
     fi
   fi
   echo "created stake account"
-  
+
   if [ "$stake_account_already_exists" != true ]; then
     echo "stake account does not exist. so lets deligate"
     if ! run_solana_command "solana delegate-stake validator-accounts/stake.json validator-accounts/vote.json --force -k $IDENTITY_FILE" "Delegate Stake"; then

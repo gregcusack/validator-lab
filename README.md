@@ -90,9 +90,10 @@ cargo run --bin cluster --
     --base-image <base-image>           # e.g. ubuntu:20.04
     --image-name <docker-image-name>    # e.g. cluster-image
     # validator config
+    --skip-primordial-accounts
     --full-rpc
-    --internal-node-sol <Sol>
-    --internal-node-stake-sol <Sol>
+    --internal-node-sol <sol>
+    --internal-node-stake-sol <sol>
     # kubernetes config
     --cpu-requests <cores>
     --memory-requests <memory>

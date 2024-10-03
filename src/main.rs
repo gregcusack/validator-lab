@@ -238,6 +238,7 @@ fn parse_matches() -> clap::ArgMatches {
                 .long("internal-node-sol")
                 .takes_value(true)
                 .default_value(&DEFAULT_INTERNAL_NODE_SOL.to_string())
+                .conflicts_with("validator_balances_file")
                 .help("Amount to fund internal nodes in genesis"),
         )
         .arg(
@@ -245,14 +246,8 @@ fn parse_matches() -> clap::ArgMatches {
                 .long("internal-node-stake-sol")
                 .takes_value(true)
                 .default_value(&DEFAULT_INTERNAL_NODE_STAKE_SOL.to_string())
+                .conflicts_with("validator_balances_file")
                 .help("Amount to stake internal nodes (Sol) in genesis"),
-        )
-        .arg(
-            Arg::with_name("skip_primordial_stakes")
-                .long("skip-primordial-stakes")
-                .help("Do not bake validator stake accounts into genesis. \
-                Validators will be funded and staked after the cluster boots. \
-                This will result in several epochs for all of the stake to warm up"),
         )
         .arg(
             Arg::with_name("commission")
@@ -260,12 +255,33 @@ fn parse_matches() -> clap::ArgMatches {
                 .value_name("PERCENTAGE")
                 .takes_value(true)
                 .default_value("100")
+                .conflicts_with("validator_balances_file")
                 .help("The commission taken by nodes on staking rewards (0-100)")
+        )
+        .arg(
+            Arg::with_name("skip_primordial_stakes")
+                .long("skip-primordial-stakes")
+                .help("Do not bake validator stake accounts into genesis.
+                Validators will be funded and staked after the cluster boots.
+                This will result in several epochs for all of the stake to warm up"),
+        )
+        .arg(
+            Arg::with_name("validator_balances_file")
+                .long("validator-balances-file")
+                .value_name("FILENAME")
+                .takes_value(true)
+                .help("The location of validator balances and stake balances for validator accounts"),
+        )
+        .group(
+            ArgGroup::with_name("validation_stake_config")
+                .args(&["skip_primordial_stakes", "validator_balances_file"])
+                .required(true) // Only one of these args must be present
+                .multiple(false), // Passing both in will result in an error
         )
         .arg(
             Arg::with_name("no_restart")
                 .long("no-restart")
-                .help("Validator config. If set, validators will not restart after \
+                .help("Validator config. If set, validators will not restart after 
                        exiting for any reason."),
         )
         //RPC config
@@ -604,6 +620,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         internal_node_sol,
         internal_node_stake_sol,
         skip_primordial_stakes,
+        validator_accounts_file: None,
     };
 
     let limit_ledger_size = value_t_or_exit!(matches, "limit_ledger_size", u64);
@@ -677,6 +694,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let retain_previous_genesis = !deploy_bootstrap_validator;
     let mut genesis = Genesis::new(
         config_directory.clone(),
+        matches
+            .value_of("validator_balances_file")
+            .map(PathBuf::from),
         genesis_flags,
         retain_previous_genesis,
     );
@@ -695,14 +715,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         genesis.generate_accounts(NodeType::Bootstrap, 1, None)?;
         info!("Generated bootstrap account");
 
+        if genesis.validator_stakes_file.is_some() {
+            genesis.load_validator_genesis_stakes_from_file()?;
+        }
+
         // creates genesis and writes to binary file
         genesis
-            .generate(
-                cluster_data_root.get_root_path(),
-                &exec_path,
-                num_validators,
-                &image_tag,
-            )
+            .generate(cluster_data_root.get_root_path(), &exec_path)
             .await?;
         info!("Genesis created");
 
