@@ -728,7 +728,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         if !skip_primordial_stakes {
             genesis.create_snapshot(&exec_path)?;
 
-            let bank_hash = genesis.get_bank_hash()?;
+            let bank_hash = genesis.get_bank_hash(&exec_path)?;
             kub_controller.set_bank_hash(bank_hash);
         }
     }

@@ -45,10 +45,15 @@ fn generate_filename(node_type: &NodeType, account_type: &str, index: usize) -> 
     }
 }
 
-/// A validator account where the data is encoded as a Base64 string.
-/// Includes the vote account and stake account.
+#[derive(Serialize, Deserialize)]
+struct ValidatorAccountsFile {
+    validator_accounts: Vec<StakedValidatorAccountInfo>,
+}
+
+/// Info needed to create a staked validator account,
+/// including relevant balances and vote- and stake-account addresses
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct ValidatorAccounts {
+pub struct StakedValidatorAccountInfo {
     pub balance_lamports: u64,
     pub stake_lamports: u64,
     pub identity_account: String,
@@ -130,7 +135,7 @@ pub struct Genesis {
     config_dir: PathBuf,
     key_generator: GenKeys,
     pub validator_stakes_file: Option<PathBuf>,
-    validator_accounts: HashMap<String, ValidatorAccounts>,
+    validator_accounts: HashMap<String, StakedValidatorAccountInfo>,
     pub flags: GenesisFlags,
 }
 
@@ -208,7 +213,6 @@ impl Genesis {
         }
 
         self.write_accounts_to_file(&node_type, &account_types, &keypairs)?;
-        // self.initialize_validator_accounts(&keypairs);
 
         Ok(())
     }
@@ -273,7 +277,7 @@ impl Genesis {
             let vote_account = account_type_keypair[1].pubkey().to_string();
             let stake_account = account_type_keypair[2].pubkey().to_string();
 
-            let validator_account = ValidatorAccounts {
+            let validator_account = StakedValidatorAccountInfo {
                 balance_lamports: 0,
                 stake_lamports: 0,
                 identity_account,
@@ -543,8 +547,9 @@ impl Genesis {
         Ok(())
     }
 
-    pub fn get_bank_hash(&self) -> Result<String, Box<dyn Error>> {
-        let agave_output = Command::new("agave-ledger-tool")
+    pub fn get_bank_hash(&self, exec_path: &Path) -> Result<String, Box<dyn Error>> {
+        let executable_path: PathBuf = exec_path.join("agave-ledger-tool");
+        let agave_output = Command::new(executable_path)
             .args([
                 "-l",
                 self.config_dir
@@ -561,6 +566,7 @@ impl Genesis {
                 "json",
             ])
             .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
             .spawn()?
             .stdout
             .expect("Failed to capture agave-ledger-tool output");
@@ -603,7 +609,7 @@ impl Genesis {
             ));
         }
 
-        // match `validator_stakes` with corresponding `ValidatorAccounts` and update balance and stake
+        // match `validator_stakes` with corresponding `StakedValidatorAccountInfo` and update balance and stake
         for (key, stake) in validator_stakes {
             if let Some(validator_account) = self.validator_accounts.get_mut(&key) {
                 validator_account.balance_lamports = stake.balance_lamports;
@@ -620,16 +626,19 @@ impl Genesis {
         Ok(())
     }
 
+    // Creates yaml file solana-genesis can read in for `--validator-stakes-file <FILE>`
+    // Yaml file created with the following format dictated in agave/genesis/README.md
+    // See: https://github.com/anza-xyz/agave/blob/master/genesis/README.md#3-through-the-validator-accounts-file-flag
     fn write_validator_genesis_accouts_to_file(&mut self) -> std::io::Result<()> {
-        // get ValidatorAccounts vec to write to file for solana-genesis
-        let validator_accounts_vec: Vec<ValidatorAccounts> =
-            self.validator_accounts.values().cloned().collect();
+        let accounts_file = ValidatorAccountsFile {
+            validator_accounts: self.validator_accounts.values().cloned().collect(),
+        };
+
         let output_file = self.config_dir.join("validator-genesis-accounts.yml");
         self.flags.validator_accounts_file = Some(output_file.clone());
 
-        // write ValidatorAccouns to yaml file for solana-genesis
         let file = File::create(&output_file)?;
-        serde_yaml::to_writer(file, &validator_accounts_vec)
+        serde_yaml::to_writer(file, &accounts_file)
             .map_err(|err| io::Error::new(io::ErrorKind::Other, format!("{err:?}")))?;
 
         info!("Validator genesis accounts successfully written to {output_file:?}");
