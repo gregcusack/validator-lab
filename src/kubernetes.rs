@@ -21,7 +21,7 @@ use {
         Client,
     },
     log::*,
-    solana_sdk::pubkey::Pubkey,
+    solana_program::pubkey::Pubkey,
     std::{
         collections::{BTreeMap, HashSet},
         error::Error,

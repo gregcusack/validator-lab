@@ -1,5 +1,5 @@
 use {
-    solana_sdk::pubkey::Pubkey,
+    solana_program::pubkey::Pubkey,
     std::{error::Error, path::PathBuf},
     strum_macros::Display,
 };

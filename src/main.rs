@@ -1,7 +1,7 @@
 use {
     clap::{command, value_t_or_exit, Arg, ArgGroup, SubCommand},
     log::*,
-    solana_clap_v3_utils::input_parsers::pubkey_of,
+    solana_clap_v3_utils::input_parsers::signer::try_pubkey_of,
     solana_ledger::blockstore_cleanup_service::{
         DEFAULT_MAX_LEDGER_SHREDS, DEFAULT_MIN_MAX_LEDGER_SHREDS,
     },
@@ -510,7 +510,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .parse()
                         .expect("Invalid value for client_wait_for_n_nodes")
                 }),
-            client_target_node: pubkey_of(matches, "client_target_node"),
+            client_target_node: try_pubkey_of(matches, "client_target_node").expect("should convert string into Pubkey"),
         };
 
         ClientConfig::BenchTps(bench_tps_config)

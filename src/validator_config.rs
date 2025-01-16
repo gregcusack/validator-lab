@@ -1,4 +1,4 @@
-use solana_sdk::pubkey::Pubkey;
+use solana_program::pubkey::Pubkey;
 
 #[derive(Debug)]
 pub struct ValidatorConfig {
